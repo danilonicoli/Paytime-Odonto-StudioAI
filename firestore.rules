@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - full_name: string (required, 1-100 chars)
+    //   - email: string (required, valid email)
+    //   - role: string (required, enum: ['admin', 'manager', 'receptionist', 'dentist'])
+    //   - unit_id: string (optional)
+    //
+    // Collection: patients
+    // Document ID: {patientId}
+    // Fields:
+    //   - full_name: string (required, 1-100 chars)
+    //   - cpf: string (optional, 11-14 chars)
+    //   - birth_date: string (optional, ISO 8601)
+    //   - phone: string (optional, 10-20 chars)
+    //   - email: string (optional, valid email)
+    //   - status: string (required, enum: ['active', 'inactive'])
+    //   - tags: list (optional, max 10 items)
+    //
+    // Collection: appointments
+    // Document ID: {appointmentId}
+    // Fields:
+    //   - patient_id: string (required)
+    //   - professional_id: string (required)
+    //   - procedure: string (required, 1-200 chars)
+    //   - start_at: timestamp (required)
+    //   - end_at: timestamp (required)
+    //   - status: string (required, enum: ['scheduled', 'confirmed', 'checked_in', 'completed', 'cancelled'])
+    //
+    // Collection: charges
+    // Document ID: {chargeId}
+    // Fields:
+    //   - patient_id: string (required)
+    //   - amount: number (required, positive)
+    //   - status: string (required, enum: ['open', 'paid', 'cancelled'])
+    //   - due_date: string (optional, ISO 8601)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "danilo.nicoli@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isStaff() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager', 'receptionist', 'dentist'];
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['full_name', 'email', 'role']) &&
+             data.full_name is string && data.full_name.size() >= 1 && data.full_name.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'manager', 'receptionist', 'dentist'];
+    }
+
+    function isValidPatient(data) {
+      return hasRequiredFields(['full_name', 'status']) &&
+             data.full_name is string && data.full_name.size() >= 1 && data.full_name.size() <= 100 &&
+             data.status in ['active', 'inactive'] &&
+             (!('email' in data) || isValidEmail(data.email)) &&
+             (!('cpf' in data) || (data.cpf is string && data.cpf.size() >= 11 && data.cpf.size() <= 14)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 10));
+    }
+
+    function isValidAppointment(data) {
+      return hasRequiredFields(['patient_id', 'professional_id', 'procedure', 'start_at', 'end_at', 'status']) &&
+             data.patient_id is string &&
+             data.professional_id is string &&
+             data.procedure is string && data.procedure.size() >= 1 && data.procedure.size() <= 200 &&
+             data.start_at is timestamp &&
+             data.end_at is timestamp &&
+             data.status in ['scheduled', 'confirmed', 'checked_in', 'completed', 'cancelled'];
+    }
+
+    function isValidCharge(data) {
+      return hasRequiredFields(['patient_id', 'amount', 'status']) &&
+             data.patient_id is string &&
+             data.amount is number && data.amount >= 0 &&
+             data.status in ['open', 'paid', 'cancelled'] &&
+             (!('due_date' in data) || isValidDateString(data.due_date));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (isOwner(userId) && request.resource.data.role != 'admin' || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (isOwner(userId) && request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /patients/{patientId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isValidPatient(request.resource.data);
+      allow update: if isStaff() && isValidPatient(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isValidAppointment(request.resource.data);
+      allow update: if isStaff() && isValidAppointment(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /charges/{chargeId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isValidCharge(request.resource.data);
+      allow update: if isStaff() && isValidCharge(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

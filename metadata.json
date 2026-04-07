@@ -1,0 +1,7 @@
+{
+  "name": "Paytime Odonto",
+  "description": "Sistema operacional cloud para consultórios odontológicos com gestão de agenda, prontuário, financeiro e terminal de autoatendimento.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
