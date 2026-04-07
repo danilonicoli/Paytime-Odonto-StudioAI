@@ -7,6 +7,9 @@ const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'));
 const AdminDashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const AdminAgenda = React.lazy(() => import('./pages/admin/Agenda'));
 const AdminPatients = React.lazy(() => import('./pages/admin/Patients'));
+const AdminFinance = React.lazy(() => import('./pages/admin/Finance'));
+const AdminMarketing = React.lazy(() => import('./pages/admin/Marketing'));
+const AdminSettings = React.lazy(() => import('./pages/admin/Settings'));
 const ClinicalDashboard = React.lazy(() => import('./pages/clinical/Dashboard'));
 const MobileHome = React.lazy(() => import('./pages/mobile/Home'));
 const MobileCheckin = React.lazy(() => import('./pages/mobile/Checkin'));
@@ -27,6 +30,9 @@ export default function App() {
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/agenda" element={<AdminAgenda />} />
             <Route path="/admin/pacientes" element={<AdminPatients />} />
+            <Route path="/admin/financeiro" element={<AdminFinance />} />
+            <Route path="/admin/marketing" element={<AdminMarketing />} />
+            <Route path="/admin/configuracoes" element={<AdminSettings />} />
             
             {/* Clinical Routes */}
             <Route path="/clinical" element={<ClinicalDashboard />} />
